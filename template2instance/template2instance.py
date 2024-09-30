@@ -193,17 +193,23 @@ def create_instance(template_dir : str, instance_dir : str):
     p_template_dir = Path(template_dir)
     p_instance_dir = Path(instance_dir)
     for root, dirs, files in os.walk(template_dir, topdown=True):
-        for d in dirs:
-            if "template2instance" != d:      
-                # Create the directory
-                ## get the relative path of the directory d
-                p_d = Path(d)
-                ## create the directory in the instance directory
-                new_path = p_instance_dir.joinpath(p_d)
-                os.makedirs(new_path,exist_ok=True)
         r_d = Path(root)
         rel_path = r_d.relative_to(p_template_dir)
         new_r_path = p_instance_dir.joinpath(rel_path)
+        for d in dirs:
+            if "template2instance" != d:
+                # Create the directory
+                ## get the new directory name
+                if '%' in str(d):
+                    new_d = str(d) % variables
+                else:
+                    new_d = d
+                p_d = Path(new_d)
+                ## create the directory in the instance directory
+                new_path = new_r_path.joinpath(p_d)
+                os.makedirs(new_path,exist_ok=True)
+        if '%' in str(new_r_path):
+            new_r_path = Path(str(new_r_path) % variables)
         for file in files:
             if file.endswith(".template"):
                 try:
