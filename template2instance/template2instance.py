@@ -215,6 +215,7 @@ def create_instance(template_dir : str, instance_dir : str):
                         f.write(content_updated)
                 except Exception as e:
                     print(f"Error while processing file {file} : {e}")
+                    print(f"Check that in your template file you escaped all % characters by doubling them (%%).")
             else:
                 # copy the file as is
                 shutil.copy(os.path.join(root, file), new_r_path)
