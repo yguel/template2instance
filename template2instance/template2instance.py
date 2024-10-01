@@ -4,6 +4,7 @@ from pathlib import Path
 import re
 import shutil
 from typeguard import typechecked
+from typing import Optional
 import semver
 import traceback
 from .open_source_license_management import get_license_short_text
@@ -132,7 +133,7 @@ def cli_user_input(var_def : dict) -> dict:
 
 
 @typechecked
-def create_instance(template_dir : str, instance_dir : str):
+def create_instance(template_dir : str, instance_dir : str, config_file : Optional[str] = None, output_config : bool = False, output_config_file : Optional[str] = None):
     """
     This function creates an instance from a template directory at instance_dir.
 
@@ -169,17 +170,32 @@ def create_instance(template_dir : str, instance_dir : str):
     if os.path.exists(plugin_file):
         import_functions_from_file(plugin_file)
     variables = {}
-    
+
+    # Load the configuration file if it exists
+    config = {}
+    if None != config_file:
+        if not os.path.exists(config_file):
+            raise Exception(f"Configuration file {config_file} does not exist.")
+        with open(config_file, "r") as f:
+            try:
+                config = json.load(f)
+            except Exception as e:
+                raise Exception(f"Error while loading {config_file} as a json dict :  {e}.")
+
     # For each variable compute the value and store it in the variables dictionary
     for v in vars:
         name = v["name"]
-        if "default" == v["access"]:
-            variables[name] = v["default"] % variables
-        elif "function" == v["access"]:
-            f = eval(v["function"])
-            variables[name] = f(variables)
+        if name in config:
+            variables[name] = config[name]
         else:
-            variables[name] = get_user_input(f"Enter a value for {name}", v)
+            if "default" == v["access"]:
+                variables[name] = v["default"] % variables
+            elif "function" == v["access"]:
+                f = eval(v["function"])
+                variables[name] = f(variables)
+            else:
+                variables[name] = get_user_input(f"Enter a value for {name}", v)
+            config[name] = variables[name]
     
     # Check if the instance directory exists or create it
     if not os.path.exists(instance_dir):
@@ -194,34 +210,51 @@ def create_instance(template_dir : str, instance_dir : str):
     p_instance_dir = Path(instance_dir)
     for root, dirs, files in os.walk(template_dir, topdown=True):
         r_d = Path(root)
-        rel_path = r_d.relative_to(p_template_dir)
-        new_r_path = p_instance_dir.joinpath(rel_path)
-        for d in dirs:
-            if "template2instance" != d:
-                # Create the directory
-                ## get the new directory name
-                if '%' in str(d):
-                    new_d = str(d) % variables
+        # Get the name of the last directory
+        parent_dir = r_d.parts[-1]
+        if "template2instance" != parent_dir:
+            rel_path = r_d.relative_to(p_template_dir)
+            new_r_path = p_instance_dir.joinpath(rel_path)
+            for d in dirs:
+                if "template2instance" != d:
+                    # Create the directory
+                    ## get the new directory name
+                    if '%' in str(d):
+                        new_d = str(d) % variables
+                    else:
+                        new_d = d
+                    p_d = Path(new_d)
+                    ## create the directory in the instance directory
+                    new_path = new_r_path.joinpath(p_d)
+                    os.makedirs(new_path,exist_ok=True)
+            if '%' in str(new_r_path):
+                new_r_path = Path(str(new_r_path) % variables)
+            for file in files:
+                if file.endswith(".template"):
+                    try:
+                        with open(os.path.join(root, file), "r") as f:
+                            content = f.read()
+                        content_updated = content % variables
+                        new_file_path = new_r_path.joinpath(file[:-len(".template")])
+                        with open(new_file_path, "w") as f:
+                            f.write(content_updated)
+                    except Exception as e:
+                        print(f"Error while processing file {file} : {e}")
+                        print(f"Check that in your template file you escaped all % characters by doubling them (%%).")
                 else:
-                    new_d = d
-                p_d = Path(new_d)
-                ## create the directory in the instance directory
-                new_path = new_r_path.joinpath(p_d)
-                os.makedirs(new_path,exist_ok=True)
-        if '%' in str(new_r_path):
-            new_r_path = Path(str(new_r_path) % variables)
-        for file in files:
-            if file.endswith(".template"):
-                try:
-                    with open(os.path.join(root, file), "r") as f:
-                        content = f.read()
-                    content_updated = content % variables
-                    new_file_path = new_r_path.joinpath(file[:-len(".template")])
-                    with open(new_file_path, "w") as f:
-                        f.write(content_updated)
-                except Exception as e:
-                    print(f"Error while processing file {file} : {e}")
-                    print(f"Check that in your template file you escaped all % characters by doubling them (%%).")
-            else:
-                # copy the file as is
-                shutil.copy(os.path.join(root, file), new_r_path)
+                    # copy the file as is
+                    shutil.copy(os.path.join(root, file), new_r_path)
+    
+    # Output the configuration file if requested
+    if output_config:
+        if None == output_config_file:
+            output_config_file = os.path.join(instance_dir, "pkg_generation_config.json")
+        else:
+            output_config_file = os.path.abspath(output_config_file)
+    
+    if None != output_config_file:
+        with open(output_config_file, "w") as fd:
+            fd.write(json.dumps(config, indent=2))
+        print(f"Configuration file written at {output_config_file}.\n"+
+              "If it is necessary to re-generate a package skeleton or you want to re-use some\n"+
+              "of your answers, you can edit it and use it to speed up your coding process.")
