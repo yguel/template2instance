@@ -10,6 +10,17 @@ import traceback
 from .open_source_license_management import get_license_short_text
 
 
+# Create a regex pattern to match a variable in a string i.e. %(variable_name)s
+var_pattern = re.compile(r'%\([a-zA-Z_][a-zA-Z0-9_]*\)s')
+@typechecked
+def str_contains_variable(s : str) -> bool:
+    """
+    This function checks if a string contains a variable that can
+    be replaced by matching a dictionary dico with the following syntax:
+    replaced_s = s % dico
+    """
+    return None != var_pattern.search(s)
+
 @typechecked
 def import_functions_from_file(file : str) -> dict:
     """
@@ -219,7 +230,7 @@ def create_instance(template_dir : str, instance_dir : str, config_file : Option
                 if "template2instance" != d:
                     # Create the directory
                     ## get the new directory name
-                    if '%' in str(d):
+                    if str_contains_variable(str(d)):
                         new_d = str(d) % variables
                     else:
                         new_d = d
@@ -227,15 +238,18 @@ def create_instance(template_dir : str, instance_dir : str, config_file : Option
                     ## create the directory in the instance directory
                     new_path = new_r_path.joinpath(p_d)
                     os.makedirs(new_path,exist_ok=True)
-            if '%' in str(new_r_path):
+            if str_contains_variable( str(new_r_path) ):
                 new_r_path = Path(str(new_r_path) % variables)
             for file in files:
+                new_file_name = file
+                if str_contains_variable( str(file) ):
+                    new_file_name = str(file) % variables
                 if file.endswith(".template"):
                     try:
                         with open(os.path.join(root, file), "r") as f:
                             content = f.read()
                         content_updated = content % variables
-                        new_file_path = new_r_path.joinpath(file[:-len(".template")])
+                        new_file_path = new_r_path.joinpath(new_file_name[:-len(".template")])
                         with open(new_file_path, "w") as f:
                             f.write(content_updated)
                     except Exception as e:
@@ -243,7 +257,7 @@ def create_instance(template_dir : str, instance_dir : str, config_file : Option
                         print(f"Check that in your template file you escaped all % characters by doubling them (%%).")
                 else:
                     # copy the file as is
-                    shutil.copy(os.path.join(root, file), new_r_path)
+                    shutil.copy(os.path.join(root, new_file_name), new_r_path)
     
     # Output the configuration file if requested
     if output_config:
