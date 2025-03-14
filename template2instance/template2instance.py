@@ -7,7 +7,8 @@ from typeguard import typechecked
 from typing import Optional
 import semver
 import traceback
-from .open_source_license_management import get_license_short_text
+from .open_source_license_management import get_license_short_text, check_known_license, get_normalized_license_name
+from validate_email import validate_email
 
 
 # Create a regex pattern to match a variable in a string i.e. %(variable_name)s
@@ -30,16 +31,7 @@ def import_functions_from_file(file : str) -> dict:
         code = f.read()
     exec(code, globals())
     return globals()
-
-@typechecked
-def validate_email(email : str) -> bool:
-    """
-    This function validates an email address.
-    """
-    if re.match(r"[^@]+@[^@]+\.[^@]+", email):
-        return True
-    return False
-
+    
 @typechecked
 def validate_semver(version : str) -> bool:
     """
@@ -61,7 +53,38 @@ def validate_uncapitalized_camel_case(name : str) -> bool:
     This function validates an uncapitalized camel case name.
     """
     return re.match(r"^[a-z]+([A-Z][a-z][0-9]+)*$", name)
-    
+
+@typechecked
+def validate_license(license : str) -> bool:
+    """
+    This function validates a license.
+    """
+    return check_known_license(license)
+
+@typechecked
+def normalize_license(license : str) -> str:
+    """
+    This function normalizes a license.
+    """
+    return get_normalized_license_name(license)
+
+class UserInputError(Exception):
+    def __init__(self, trace : str=None, *args):
+        self.trace = trace
+        super().__init__(*args)
+
+@typechecked
+def try_convert_to_list(s : str) -> Optional[list]:
+    """
+    This function tries to convert a string to a list.
+    """
+    try:
+        l = json.loads(s)
+        if type(l) == list:
+            return l
+    except:
+        return None 
+    return None
 
 @typechecked
 def get_user_input(imsg : str, var : dict) -> str:
@@ -77,8 +100,15 @@ def get_user_input(imsg : str, var : dict) -> str:
     print(imsg+".")
     if "type" in var:
         vtype = var["type"]
+        if "type_description" in var:
+            type_ask = "Please enter a value of type " + var["type_description"] + "."
+        else:
+            if None != try_convert_to_list(vtype):
+                type_ask = "Please enter a value in the list: " + vtype + "."
+            else:
+                type_ask = "Please enter a value of type " + vtype + "."
         while True:
-            print("Please enter a value of type", vtype+".")
+            print(type_ask)
             print("?> ", end="")
             try:
                 if vtype == "int":
@@ -92,21 +122,29 @@ def get_user_input(imsg : str, var : dict) -> str:
                     elif value == "false" or value == "f" or value == "no" or value == "n" or value == "0":
                         value = False
                     else:
-                        raise ValueError
+                        raise UserInputError
                 else:
                     value = input()
                 if "validation" in var:
                     try:
                         f = eval("validate_" + var["validation"])
                         if not f(value):
-                            raise ValueError
+                            raise UserInputError
                     except Exception as e:
                         trace = traceback.format_exc()
-                        print(f"Error while validating the value: {e} : {trace}.")
-                        raise ValueError
+                        print(f"Error while validating the value: {e}.")
+                        raise UserInputError(trace=trace)
+                if "normalize" in var:
+                    try:
+                        f = eval("normalize_" + var["normalize"])
+                        value = f(value)
+                    except Exception as e:
+                        trace = traceback.format_exc()
+                        print(f"Error while normalizing the value: {e}.")
+                        raise UserInputError(trace=trace)
                 # everything is fine, break the loop
                 break
-            except ValueError:
+            except UserInputError or ValueError as e:
                 try:
                     desc = " with description : " + var["description"]
                 except:
@@ -115,7 +153,20 @@ def get_user_input(imsg : str, var : dict) -> str:
                     validated_by = " validated by function: " + "validate_" + var["validation"]
                 except:
                     validated_by = ""
-                print(f"Invalid input ({value}). Please enter a value of type {vtype} {desc} {validated_by}.")
+                try:
+                    value_example = ". An example of possible value is " + var["value_example"]
+                except:
+                    value_example = ""
+                print(f"Invalid input ({value}). Please enter a value of type {vtype} {desc} {validated_by} {value_example}.")
+                print("Would you like the trace of the error? (y|[N])")
+                print("?> ", end="")
+                trace = input().lower()
+                while trace != "y" and trace != "n" and trace != "":
+                    print("Please enter y or n.")
+                    print("?> ", end="")
+                    trace = input().lower()
+                if trace == "y":
+                    print(e.trace)
     else:
         value = input()
     if value == "" and "default" in var:
@@ -269,6 +320,6 @@ def create_instance(template_dir : str, instance_dir : str, config_file : Option
     if None != output_config_file:
         with open(output_config_file, "w") as fd:
             fd.write(json.dumps(config, indent=2))
-        print(f"Configuration file written at {output_config_file}.\n"+
+        print(f"Configuration file written at {output_config_file} .\n"+
               "If it is necessary to re-generate a package skeleton or you want to re-use some\n"+
               "of your answers, you can edit it and use it to speed up your coding process.")
