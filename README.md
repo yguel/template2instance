@@ -14,6 +14,13 @@ Then install the package:
 poetry install
 ```
 
+Then install some templates:
+``` bash
+mkdir -p templates/ros2
+cd templates/ros2
+git clone https://github.com/yguel/template.ros2.view_robot.git
+git clone https://github.com/yguel/template.ros2.rqt.git
+```
 ## Usage
 
 The most simple way to use the tool is to run the following command:
