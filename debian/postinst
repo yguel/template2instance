@@ -1,0 +1,520 @@
+#!/usr/bin/env python3
+import os
+import subprocess
+import sys
+import re
+import importlib.util
+import traceback
+import shutil
+from pathlib import Path
+from typeguard import typechecked
+import json
+from logging import Logger
+import logging
+import glob
+
+initial_template_list = [
+    {
+        "path" : "templates/ros2/view_robot",
+        "repository" : "https://github.com/yguel/template.ros2.view_robot.git"
+    },
+    {
+        "path" : "templates/ros2/rqt",
+        "repository" : "https://github.com/yguel/template.ros2.rqt.git"
+    }
+]
+
+project_dir = '/usr/share/template2instance'
+installed_files_tracker = {}
+installed_files_tracker_name = "installed_files.json"
+logger=None
+
+###############################
+# Utility Functions and classes
+###############################
+
+
+@typechecked
+def record_file(file_path: str):
+    global installed_files_tracker
+    # Get the absolute path of the file
+    file_path = os.path.abspath(file_path)
+    if file_path not in installed_files_tracker:
+        installed_files_tracker[file_path] = {
+            "type": "file"
+        }
+    else:
+        if installed_files_tracker[file_path]["type"] != "file":
+            raise Exception(
+                f"File {file_path} already recorded as a directory")
+
+
+@typechecked
+def record_directory(dir_path: str):
+    global installed_files_tracker
+    # Get the absolute path of the directory
+    dir_path = os.path.abspath(dir_path)
+    if dir_path not in installed_files_tracker:
+        installed_files_tracker[dir_path] = {
+            "type": "directory"
+        }
+    else:
+        if installed_files_tracker[dir_path]["type"] != "directory":
+            raise Exception(f"Directory {dir_path} already recorded as a file")
+
+
+@typechecked
+def save_installed_files():
+    global installed_files_tracker
+    save_file_path = os.path.join(project_dir, installed_files_tracker_name)
+    with open(save_file_path, "w") as f:
+        json.dump(installed_files_tracker, f, indent=2)
+
+
+@typechecked
+def load_installed_files():
+    global installed_files_tracker
+    save_file_path = os.path.join(project_dir, installed_files_tracker_name)
+    if os.path.exists(save_file_path):
+        with open(save_file_path, "r") as f:
+            installed_files_tracker = json.load(f)
+
+
+@typechecked
+def clean_installed_files():
+    """
+    Clean the installed files and directories. All files and directories are concerned 
+    except:
+    - the directory of the project containing this script
+    - the log directory: /var/log/template2instance
+    """
+    global installed_files_tracker
+    installed_files_tracker = {}
+    load_installed_files()
+    for k, v in installed_files_tracker.items():
+        if v["type"] == "file":
+            if os.path.exists(k):
+                os.remove(k)
+        elif v["type"] == "directory":
+            if os.path.exists(k):
+                shutil.rmtree(k)
+
+
+@typechecked
+def handle_subprocess_error(e: Exception, cmd: str, exit: bool = False, raise_exception: bool = False):
+    res_out = e.stdout.decode() if e.stdout else "No stdout"
+    res_err = e.stderr.decode() if e.stderr else "No stderr"
+    imsg = f"ERROR: {cmd}. Details: {e}, {res_out} {res_err}"
+    logger.error(imsg)
+    if exit:
+        print(imsg)
+        sys.exit(-1)
+    if raise_exception:
+        raise Exception(cmd)
+
+
+@typechecked
+def keep_one_file_log_history(logger_name: str, log_file_path: str):
+    # Keep only one log file
+    log_files = [f for f in os.listdir(log_file_path) if f.endswith(".log")]
+    # find all log_files containing logger_name
+    log_files = [f for f in log_files if logger_name in f]
+    if 1 < len(log_files):
+        # Sort the log files by date
+        log_files.sort(key=lambda x: os.path.getmtime(
+            os.path.join(log_file_path, x)))
+        # Remove all log files except the most recent one
+        for log_file in log_files[:-1]:
+            os.remove(os.path.join(log_file_path, log_file))
+    # Rename the remaining log file appending _prev to its base name
+    if 1 <= len(log_files):
+        remaining_file = log_files[-1]
+        os.rename(os.path.join(log_file_path, remaining_file),
+                  os.path.join(log_file_path, remaining_file.replace(".log", "_prev.log")))
+
+
+class FlushFileHandler(logging.FileHandler):
+    """
+    A handler class which writes logging records flushing after each record.
+    """
+
+    def emit(self, record):
+        super().emit(record)
+        self.flush()  # Ensure flushing happens right after emit
+
+
+@typechecked
+def init_logging(logger_name: str, log_file_path: str) -> Logger:
+    # Setup logging service
+    logger = Logger.manager.getLogger(logger_name)
+    logger.setLevel(logging.DEBUG)
+    # create file handler which logs even debug messages
+    fh = FlushFileHandler(os.path.join(log_file_path, logger_name + ".log"))
+    fh.setLevel(logging.DEBUG)
+    # create formatter and add it to the handler
+    formatter = logging.Formatter(
+        '%(asctime)s - logger : %(name)s - %(levelname)s - psid : %(processName)s - filename : %(filename)s - funcname: %(funcName)s - Line num : %(lineno)d -> %(message)s')
+    fh.setFormatter(formatter)
+    # add the handler to logger
+    logger.addHandler(fh)
+    #
+    logger.info('Logger initialized !')
+    return logger
+
+
+def import_module_from_path(module_name: str, file_path: str, add_to_sys_modules: bool = False):
+    # Create a module spec from the file location
+    spec = importlib.util.spec_from_file_location(module_name, file_path)
+    if spec is None:
+        raise ImportError(f"Cannot find module {module_name} at {file_path}")
+
+    # Create a new module based on the spec
+    module = importlib.util.module_from_spec(spec)
+
+    # Execute the module in its own namespace
+    spec.loader.exec_module(module)
+
+    if add_to_sys_modules:
+        # Optionally, add the module to sys.modules
+        sys.modules[module_name] = module
+
+    return module
+
+###############################
+# poetry functions
+###############################
+
+def get_poetry_version(poetry_path: str) -> tuple[int, int, int]:
+    try:
+        result = subprocess.run(
+            [poetry_path, '--version'],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True
+        )
+        s = result.stdout
+        # Check for the version string in the form of 'Poetry ( version i.j.k )'
+        # taking whatever space is there each time there is a space
+        # and being case insensitive
+        reg = r'Poetry\s*\(\s*version\s*(\d+)\.(\d+)\.(\d+)\s*\)'
+        match = re.search(reg, s, re.IGNORECASE)
+        if match:
+            return tuple(map(int, match.groups()))
+        else:
+            return None
+    except Exception as e:
+        return None
+
+
+def find_poetry_binary() -> str:
+    modern_install_path = '/root/.local/bin'
+    modern_version = None
+    poetry_modern_path = None
+    poetry_env_path = None
+    env_version = None
+    poetry_path = None
+    # Test if modern_install_path exists
+    if os.path.exists(modern_install_path):
+        # Test if poetry is installed in the modern install path
+        if 'poetry' in os.listdir(modern_install_path):
+            # test if poetry is an executable
+            poetry_modern_path = os.path.join(modern_install_path, 'poetry')
+            if os.access(poetry_modern_path, os.X_OK):
+                try:
+                    modern_version = get_poetry_version(poetry_modern_path)
+                except Exception as e:
+                    modern_version = None
+    # Test if poetry is installed in the system path
+    print("Finding poetry binary...")
+    try:
+        poetry_env_path = shutil.which('poetry')
+        try:
+            env_version = get_poetry_version(poetry_env_path)
+        except Exception as e:
+            env_version = None
+    except Exception as e:
+        poetry_env_path = None
+        env_version = None
+    #
+    if modern_version is not None and env_version is None:
+        poetry_path = poetry_modern_path
+    elif env_version is not None and modern_version is None:
+        poetry_path = poetry_env_path
+    elif env_version is not None and modern_version is not None:
+        if env_version > modern_version:
+            poetry_path = poetry_env_path
+        else:
+            poetry_path = poetry_modern_path
+    else:
+        # both versions are undefined
+        imsg = "Warning: impossible to get poetry version"
+        print(imsg)
+        if poetry_modern_path is not None:
+            poetry_path = poetry_modern_path
+        elif poetry_env_path is not None:
+            poetry_path = poetry_env_path
+        else:
+            # poetry is not installed
+            imsg = "Error: 'poetry' is not installed.\nPlease install 'poetry' to continue."
+            print(imsg)
+            raise Exception(imsg)
+    print("\tPoetry binary found at: ", poetry_path)
+    return poetry_path
+
+
+def find_poetry_path() -> str:
+    poetry_binary = find_poetry_binary()
+    if poetry_binary is None:
+        imsg = "Error: 'poetry' is not installed.\nPlease install 'poetry' to continue."
+        print(imsg)
+        raise Exception(imsg)
+    poetry_path = Path(poetry_binary).parent
+    return str(poetry_path)
+
+
+def download_and_update_to_last_poetry_version(log_file):
+    imsg = "Downloading and installing last poetry version..."
+    print(imsg, flush=True)
+    log_file.write(imsg+"\n")
+    curl_path = shutil.which('curl')
+    try:
+        install_cmd = [
+            curl_path, '-sSL', 'https://install.python-poetry.org',
+            '|', 'python3', '-']
+        cmd = " ".join(install_cmd)
+        result = subprocess.run(cmd,
+                                shell=True,
+                                check=True,
+                                stdout=log_file,
+                                stderr=subprocess.STDOUT,
+                                text=True
+                                )
+        imsg = "Last poetry version installed successfully."
+        print(imsg, flush=True)
+        log_file.write(imsg+"\n")
+    except Exception as e:
+        stdin = subprocess.PIPE
+        imsg = f"Error: '{cmd}' failed."
+        print(imsg, flush=True)
+        imsg = imsg + " ".join(
+            traceback.TracebackException.from_exception(e).format())
+        log_file.write(imsg+"\n")
+        raise e
+
+
+def poetry_install(log_file):
+    imsg = "Running 'poetry install' to set up the project dependencies..."
+    print(imsg)
+    log_file.write(imsg+"\n")
+    inst_dir = '/usr/share/template2instance'
+
+    try:
+        # Navigate to the project directory
+        os.chdir(inst_dir)
+
+        # Ensure 'poetry' is installed, find its path
+        poetry_path = find_poetry_path()
+        imsg = f"Poetry binary path from find_poetry_path: {poetry_path}"
+        log_file.write(imsg+"\n")
+
+        # Run 'poetry install' and log output
+        poetry_bin = poetry_path + '/poetry'
+        result = subprocess.run(
+            [poetry_bin, 'install'],
+            check=True,
+            stdout=log_file,
+            stderr=subprocess.STDOUT,
+            text=True
+        )
+        imsg = "'poetry install' completed successfully."
+        print(imsg)
+        log_file.write(imsg+"\n")
+    except Exception as e:
+        imsg = f"Error: 'poetry install' failed.\nThe system may not work as expected.\nCheck {log_file.name} for details."
+        # print(imsg)
+        log_file.write(imsg+"\n")
+        raise e
+    
+def poetry_build(log_file):
+    imsg = "Running 'poetry build' to create something that pip can install..."
+    print(imsg)
+    log_file.write(imsg+"\n")
+    inst_dir = '/usr/share/template2instance'
+
+    try:
+        # Navigate to the project directory
+        os.chdir(inst_dir)
+
+        # Ensure 'poetry' is installed, find its path
+        poetry_path = find_poetry_path()
+        imsg = f"Poetry binary path from find_poetry_path: {poetry_path}"
+        log_file.write(imsg+"\n")
+
+        # Run 'poetry install' and log output
+        poetry_bin = poetry_path + '/poetry'
+        result = subprocess.run(
+            [poetry_bin, 'build'],
+            check=True,
+            stdout=log_file,
+            stderr=subprocess.STDOUT,
+            text=True
+        )
+        imsg = "'poetry build' completed successfully."
+        print(imsg)
+        log_file.write(imsg+"\n")
+    except Exception as e:
+        imsg = f"Error: 'poetry build' failed.\nThe system may not work as expected.\nCheck {log_file.name} for details."
+        # print(imsg)
+        log_file.write(imsg+"\n")
+        raise e
+    
+def poetry_pip(log_file):
+    imsg = "Running 'pip install with the built wheel' to obtain a script..."
+    print(imsg)
+    log_file.write(imsg+"\n")
+    inst_dir = '/usr/share/template2instance'
+
+    try:
+        # Navigate to the project directory
+        os.chdir(inst_dir)
+
+        # Run 'pip install' and log output
+        wheel_files = glob.glob("dist/template2instance*.whl")
+        if not wheel_files:
+            raise FileNotFoundError("No matching wheel file found.")
+        cmd = f"python3 -m pip install {wheel_files[0]}"
+        result = subprocess.run(
+            cmd.split(),
+            check=True,
+            stdout=log_file,
+            stderr=subprocess.STDOUT,
+            text=True
+        )
+        imsg = "'pip install' completed successfully."
+        print(imsg)
+        log_file.write(imsg+"\n")
+    except Exception as e:
+        imsg = f"Error: 'pip install' failed.\nThe system may not work as expected.\nCheck {log_file.name} for details."
+        # print(imsg)
+        log_file.write(imsg+"\n")
+        raise e
+    
+    
+def poetry_pip_install_build(log_file):
+    poetry_install(log_file)
+    poetry_build(log_file)
+    poetry_pip(log_file)
+    
+
+
+###############################
+# Main
+###############################
+
+def main():
+    # Ensure the log directory exists
+    log_dir = '/var/log/template2instance'
+    os.makedirs(log_dir, exist_ok=True)
+    log_file = os.path.join(log_dir, 'poetry-install.log')
+    poetry_bin = None
+    try:
+        with open(log_file, 'w') as lf:
+            poetry_bin = find_poetry_binary()
+            try:
+                # Install, build and pip install the project
+                poetry_pip_install_build(lf)
+            except Exception as e:
+                try:
+                    imsg = "Running 'poetry self update' to update the dependency manager..."
+                    print(imsg, flush=True)
+                    lf.write(imsg+"\n")
+                    result = subprocess.run(
+                        [poetry_bin, 'self update'],
+                        check=True,
+                        stdout=lf,
+                        stderr=subprocess.STDOUT,
+                        text=True
+                    )
+                    imsg = "'poetry self update' completed successfully."
+                    print(imsg, flush=True)
+                    lf.write(imsg+"\n")
+                    poetry_pip_install_build(lf)
+                except subprocess.CalledProcessError as e:
+                    imsg = "Error: 'poetry self update' failed."
+                    print(imsg, flush=True)
+                    lf.write(imsg+"\n")
+                    imsg = "Trying to download and update to the last poetry version..."
+                    print(imsg, flush=True)
+                    lf.write(imsg+"\n")
+                    try:
+                        download_and_update_to_last_poetry_version(lf)
+                    except Exception as e:
+                        imsg = f"Error: An unexpected error occurred: {e}"
+                        print(imsg, flush=True)
+                        imsg = imsg + " ".join(
+                            traceback.TracebackException.from_exception(e).format())
+                        lf.write(imsg+"\n")
+                        imsg = f"The system may not work as expected.\nCheck {log_file} for details."
+                        print(imsg, flush=True)
+                        lf.write(imsg+"\n")
+                        sys.exit(1)
+                # Here poetry should be updated with the last version
+                poetry_pip_install_build(lf)
+    except Exception as e:
+        if not lf.closed:
+            lf.close()
+        imsg = f"Error: An unexpected error occurred.\nCheck {log_file} for details."
+        print(imsg, flush=True)
+        with open(log_file, 'a') as lf:
+            imsg = imsg + " ".join(
+                traceback.TracebackException.from_exception(e).format())
+            lf.write(imsg+"\n")
+        sys.exit(1)
+    # Install templates
+    log_file = os.path.join(log_dir, 'templates-install.log')
+    with open(log_file, 'w') as lf:
+        for t in initial_template_list:
+            template_name = None
+            try:
+                imsg = f"Installing template: {t['path']} from repository: {t['repository']}"
+                print(imsg, flush=True)
+                lf.write(imsg+"\n")
+                template_name = t['path'].split('/')[-1]
+                # create directory
+                template_dir = t['path'][:-len(template_name)]
+                cmd = "mkdir -p " + template_dir
+                print(cmd)
+                result = subprocess.run(
+                    cmd.split(),
+                    check=True,
+                    stdout=lf,
+                    stderr=subprocess.STDOUT,
+                    text=True
+                )
+                # clone the repository
+                cmd = f"git clone {t['repository']} {project_dir}/{t['path']}"
+                result = subprocess.run(
+                    cmd.split(),
+                    check=True,
+                    stdout=lf,
+                    stderr=subprocess.STDOUT,
+                    text=True
+                )
+                imsg = f"Template: {template_name} installed successfully."
+                print(imsg, flush=True)
+                lf.write(imsg+"\n")
+                record_directory(f"{project_dir}/{t['path']}")
+            except Exception as e:
+                imsg = f"Impossible to install template {template_name}. Error: An unexpected error occurred: {e}"
+                print(imsg, flush=True)
+                imsg = imsg + " ".join(
+                    traceback.TracebackException.from_exception(e).format())
+                lf.write(imsg+"\n")
+        save_installed_files()
+       
+    imsg = "\n\nInstallation completed successfully for template2install package.\n\nTo use template2install run the command: «create <template_folder> <new_project_folder> »\n"
+    print(imsg, flush=True)
+
+if __name__ == '__main__':
+    main()

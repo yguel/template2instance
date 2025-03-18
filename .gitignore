@@ -1,2 +1,10 @@
 **/__pycache__/
 pkg_generation_config*.json
+configs/
+dist/
+templates
+debian/files
+debian/.debhelper
+debian/debhelper-build-stamp
+debian/template2instance.substvars
+debian/template2instance

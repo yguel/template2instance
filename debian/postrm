@@ -1,0 +1,76 @@
+#!/usr/bin/env python3
+import sys
+import shutil
+import os
+import json
+import subprocess
+
+installed_files_tracker = {}
+installed_files_tracker_name = "installed_files.json"
+
+
+def load_installed_files(project_dir: str):
+    global installed_files_tracker
+    save_file_path = os.path.join(project_dir, installed_files_tracker_name)
+    if os.path.exists(save_file_path):
+        with open(save_file_path, "r") as f:
+            installed_files_tracker = json.load(f)
+
+
+def clean_installed_files(project_dir: str):
+    """
+    Clean the installed files and directories. All files and directories are concerned 
+    except:
+    - the directory of the project containing this script
+    - the log directory: /var/log/template2instance
+    """
+    global installed_files_tracker
+    installed_files_tracker = {}
+    load_installed_files(project_dir)
+    for k, v in installed_files_tracker.items():
+        if v["type"] == "file":
+            if os.path.exists(k):
+                print(f"Removing file: {k}")
+                os.remove(k)
+        elif v["type"] == "directory":
+            if os.path.exists(k):
+                print(f"Removing directory: {k}")
+                shutil.rmtree(k)
+
+
+def main():
+    # Check if an action is provided
+    if len(sys.argv) < 1:
+        print(f"Error: No action provided. Arguments: {sys.argv}")
+        sys.exit(0)
+    # Check if the action is valid
+    action = sys.argv[1]
+    if action in ('remove', 'purge'):
+        # Uninstall the project
+        print("Uninstalling the project with pip...")
+        cmd = "python3 -m pip uninstall -y template2instance"
+        result = subprocess.run(
+            cmd.split(),
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True
+        )
+        # Look in the project directory for the tracker of installed files
+        dir_path = '/usr/share/template2instance'
+        clean_installed_files(dir_path)
+
+        # Remove the project and log directories
+        print("Removing the project and log directories...")
+        dir_to_remove = [dir_path, "/var/log/template2instance"]
+        for d in dir_to_remove:
+            try:
+                print(f"Try to remove directory: {d}")
+                shutil.rmtree(d)
+            except Exception as e:
+                # print(f"Error: {e}.")
+                pass  # Ignore the error, directory should not exist at this point
+
+
+if __name__ == '__main__':
+    main()

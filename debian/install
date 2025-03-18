@@ -1,0 +1,6 @@
+template2instance/* usr/share/template2instance/template2instance/
+scripts/* usr/share/template2instance/scripts/
+tests/* usr/share/template2instance/tests/
+LICENSE usr/share/template2instance/
+README.md usr/share/template2instance/
+pyproject.toml usr/share/template2instance/

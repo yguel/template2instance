@@ -45,14 +45,17 @@ def main(template_dir, project_dir, config, output_config, output_config_file):
     # is the template_dir a valid path?
     if not os.path.exists(template_dir):
         # if not, try to find the template in the templates directory
-        templates_folder = os.path.abspath( Path(__file__).parent.parent / "templates" )
-        new_template_dir = os.path.join(templates_folder, template_dir)
-        if not os.path.exists(new_template_dir):
-            print(f"Template {template_dir} not found. Known templates are in {templates_folder} folder.")
+        templates_folder_candidates = ["/usr/share/template2instance/templates", os.path.abspath( Path(__file__).parent.parent / "templates" ) ]
+        found = False
+        for f in templates_folder_candidates:
+            new_template_dir = os.path.join(f, template_dir)
+            if os.path.exists(new_template_dir):
+                template_dir = new_template_dir
+                found = True
+                break
+        if not found:
+            print(f"Template {template_dir} not found. Known templates are in {templates_folder_candidates} folders.")
             return
-        else:
-            template_dir = new_template_dir
-    
     try:
         t2i.create_instance(template_dir, 
                             project_dir, 

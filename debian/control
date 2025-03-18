@@ -1,0 +1,13 @@
+Source: template2instance
+Section: utils
+Priority: optional
+Maintainer: Manuel YGUEL <yguel.robotics@gmail.com>
+Build-Depends: debhelper (>= 9), debhelper-compat (= 12)
+Standards-Version: 4.5.0
+
+Package: template2instance
+Architecture: amd64 i386 arm64
+Pre-Depends: mokutil, python3 (>=3.5), git, pkg-config, build-essential, curl
+Depends: ${misc:Depends}
+Description: template2instance is a tool to generate project instances from templates
+  This package provides the template2instance tool, which is a command line tool to generate project instances from templates.
