@@ -7,7 +7,7 @@ Standards-Version: 4.5.0
 
 Package: template2instance
 Architecture: amd64 i386 arm64
-Pre-Depends: mokutil, python3 (>=3.5), git, pkg-config, build-essential, curl
+Pre-Depends: python3 (>=3.5), python3-typeguard, git, curl
 Depends: ${misc:Depends}
 Description: template2instance is a tool to generate project instances from templates
   This package provides the template2instance tool, which is a command line tool to generate project instances from templates.

@@ -256,7 +256,7 @@ def find_poetry_binary() -> str:
             poetry_path = poetry_env_path
         else:
             # poetry is not installed
-            imsg = "Error: 'poetry' is not installed.\nPlease install 'poetry' to continue."
+            imsg = "Error: 'poetry' is not installed.\npoetry must be installed to continue."
             print(imsg)
             raise Exception(imsg)
     print("\tPoetry binary found at: ", poetry_path)
@@ -420,8 +420,8 @@ def main():
     poetry_bin = None
     try:
         with open(log_file, 'w') as lf:
-            poetry_bin = find_poetry_binary()
             try:
+                poetry_bin = find_poetry_binary()
                 # Install, build and pip install the project
                 poetry_pip_install_build(lf)
             except Exception as e:
@@ -440,7 +440,7 @@ def main():
                     print(imsg, flush=True)
                     lf.write(imsg+"\n")
                     poetry_pip_install_build(lf)
-                except subprocess.CalledProcessError as e:
+                except Exception as e:
                     imsg = "Error: 'poetry self update' failed."
                     print(imsg, flush=True)
                     lf.write(imsg+"\n")
