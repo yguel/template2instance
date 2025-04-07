@@ -1,3 +1,10 @@
+template2instance (1.0.1) UNRELEASED; urgency=medium
+
+  * Fixed bug in folder creation when the folder name contains
+    variables.
+
+ -- Manuel YGUEL <manu@yguel>  Mon, 07 Apr 2025 17:19:46 +0200
+
 template2instance (1.0) stable; urgency=medium
 
   * Initial release.

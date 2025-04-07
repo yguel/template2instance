@@ -277,6 +277,8 @@ def create_instance(template_dir : str, instance_dir : str, config_file : Option
         if "template2instance" != parent_dir:
             rel_path = r_d.relative_to(p_template_dir)
             new_r_path = p_instance_dir.joinpath(rel_path)
+            if str_contains_variable( str(new_r_path) ):
+                new_r_path = Path(str(new_r_path) % variables)
             for d in dirs:
                 if "template2instance" != d:
                     # Create the directory
@@ -289,8 +291,6 @@ def create_instance(template_dir : str, instance_dir : str, config_file : Option
                     ## create the directory in the instance directory
                     new_path = new_r_path.joinpath(p_d)
                     os.makedirs(new_path,exist_ok=True)
-            if str_contains_variable( str(new_r_path) ):
-                new_r_path = Path(str(new_r_path) % variables)
             for file in files:
                 new_file_name = file
                 if str_contains_variable( str(file) ):
