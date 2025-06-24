@@ -225,17 +225,18 @@ def find_poetry_binary() -> str:
                     modern_version = get_poetry_version(poetry_modern_path)
                 except Exception as e:
                     modern_version = None
-    # Test if poetry is installed in the system path
-    print("Finding poetry binary...")
-    try:
-        poetry_env_path = shutil.which('poetry')
+    if None == modern_version:
+        # Test if poetry is installed in the system path
+        print("Finding poetry binary...")
         try:
-            env_version = get_poetry_version(poetry_env_path)
+            poetry_env_path = shutil.which('poetry')
+            try:
+                env_version = get_poetry_version(poetry_env_path)
+            except Exception as e:
+                env_version = None
         except Exception as e:
+            poetry_env_path = None
             env_version = None
-    except Exception as e:
-        poetry_env_path = None
-        env_version = None
     #
     if modern_version is not None and env_version is None:
         poetry_path = poetry_modern_path
@@ -439,7 +440,6 @@ def main():
                     imsg = "'poetry self update' completed successfully."
                     print(imsg, flush=True)
                     lf.write(imsg+"\n")
-                    poetry_pip_install_build(lf)
                 except Exception as e:
                     imsg = "Error: 'poetry self update' failed."
                     print(imsg, flush=True)

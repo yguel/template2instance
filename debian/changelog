@@ -1,9 +1,16 @@
-template2instance (1.0.1) UNRELEASED; urgency=medium
+template2instance (1.1.0) stable; urgency=medium
+
+  * Template files can have xxxx.template.suffix names allowing syntax
+    highlighting in code editors.
+
+ -- Manuel YGUEL <yguel.robotics@gmail.com>  Tue, 24 Jun 2025 15:31:27 +0200
+
+template2instance (1.0.1) stable; urgency=medium
 
   * Fixed bug in folder creation when the folder name contains
     variables.
 
- -- Manuel YGUEL <manu@yguel>  Mon, 07 Apr 2025 17:19:46 +0200
+ -- Manuel YGUEL <yguel.robotics@gmail.com>  Mon, 07 Apr 2025 17:19:46 +0200
 
 template2instance (1.0) stable; urgency=medium
 

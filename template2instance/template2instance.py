@@ -9,7 +9,7 @@ import semver
 import traceback
 from .open_source_license_management import get_license_short_text, check_known_license, get_normalized_license_name
 from validate_email import validate_email
-
+from enum import Enum, unique, auto
 
 # Create a regex pattern to match a variable in a string i.e. %(variable_name)s
 var_pattern = re.compile(r'%\([a-zA-Z_][a-zA-Z0-9_]*\)s')
@@ -193,6 +193,58 @@ def cli_user_input(var_def : dict) -> dict:
             var_new[name] = get_user_input(imsg, var)
     return var_new
 
+@unique
+class TEMPLATE_MATCHING_METHOD(Enum):
+    ENDS_WITH_TEMPLATE_SUFFIX = auto() # Any file that names ends with .template
+    TEMPLATE_BEFORE_SUFFIX_OR_ENDS_WITH_TEMPLATE_SUFFIX = auto() # Any file that names ends with .template or is of type name.template.suffix 
+    ALL = auto() # All files are considered as templates
+    PATH_MATCHES = auto() # Only files whose path belongs to the list of templates
+
+def check_filename(name : str):
+    assert( name != "" )
+
+@typechecked
+def any_file_is_a_template( filename : str, folder_path : str ) -> tuple[bool,str]:
+    check_filename(filename)
+    return (True,filename)
+
+@typechecked
+def file_ends_with_template_suffix( filename : str, folder_path : str ) -> tuple[bool,str]:
+    check_filename(filename)
+    L = len(".template")
+    to_parse = filename.endswith(".template") and len(filename) > L
+    new_file_name = filename
+    if to_parse:
+        new_file_name = filename[:-L]
+    check_filename(new_file_name)
+    return (to_parse,new_file_name)
+
+@typechecked
+def file_has_template_before_suffix_or_ends_with_template_suffix(filename :str, folder_path : str) -> tuple[bool,str]:
+    # To handle files without a suffix we check for filenames ending with 'template' suffix
+    re,name = file_ends_with_template_suffix(filename,folder_path)
+    if re:
+        return (re,name)
+    try:
+        splitted = filename.split('.')
+        if splitted[-2] == "template":
+            del splitted[-2] # remove last template from the list
+            new_file_name = '.'.join(splitted)
+            check_filename(new_file_name)
+            return (True,new_file_name)
+        return (False,filename)
+    except Exception as e:
+        return (False,filename)
+
+@typechecked
+def file_belongs_to_template_list(filename : str, folder_path : str) -> tuple[bool,str]:
+    check_filename(filename)
+    global template_list
+    if str(folder_path.joinpath(filename)) in template_list:
+        return (True,filename)
+    else:
+        return (False,filename)
+
 
 @typechecked
 def create_instance(template_dir : str, instance_dir : str, config_file : Optional[str] = None, output_config : bool = False, output_config_file : Optional[str] = None):
@@ -224,7 +276,7 @@ def create_instance(template_dir : str, instance_dir : str, config_file : Option
         except Exception as e:
             raise Exception(f"Error while loading {var_json_path} as a json dict :  {e}.")
     try:
-        vars = var_json["variables"]
+        cfg_vars = var_json["variables"]
     except:
         raise Exception(f"Variables not found in {var_json_path}.")
     ## Load the functions in the template2instance/template2instance_plugin.py file
@@ -245,7 +297,7 @@ def create_instance(template_dir : str, instance_dir : str, config_file : Option
                 raise Exception(f"Error while loading {config_file} as a json dict :  {e}.")
 
     # For each variable compute the value and store it in the variables dictionary
-    for v in vars:
+    for v in cfg_vars:
         name = v["name"]
         if name in config:
             variables[name] = config[name]
@@ -258,6 +310,32 @@ def create_instance(template_dir : str, instance_dir : str, config_file : Option
             else:
                 variables[name] = get_user_input(f"Enter a value for {name}", v)
             config[name] = variables[name]
+
+    # Define the method to find template files
+    global file_is_a_template_file
+    try:
+        match_method = TEMPLATE_MATCHING_METHOD[cfg_vars["find template file method"]]
+    except Exception as e:
+        print(f"Error while loading the template matching method: {e}. Using default method: ENDS_WITH_TEMPLATE_SUFFIX.")
+        match_method = TEMPLATE_MATCHING_METHOD.TEMPLATE_BEFORE_SUFFIX_OR_ENDS_WITH_TEMPLATE_SUFFIX
+    match match_method:
+        case TEMPLATE_MATCHING_METHOD.ENDS_WITH_TEMPLATE_SUFFIX:
+            file_is_a_template_file = file_ends_with_template_suffix
+        case TEMPLATE_MATCHING_METHOD.TEMPLATE_BEFORE_SUFFIX_OR_ENDS_WITH_TEMPLATE_SUFFIX:
+            file_is_a_template_file = file_has_template_before_suffix_or_ends_with_template_suffix
+        case TEMPLATE_MATCHING_METHOD.ALL:
+            file_is_a_template_file = any_file_is_a_template
+        case TEMPLATE_MATCHING_METHOD.PATH_MATCHES:
+            # Load the list of template files from the configuration
+            if "template files" not in cfg_vars:
+                raise Exception("Template matching method is set to PATH_MATCHES but no template files are defined in the configuration. Add a 'template files' key in the configuration file with a list of template files.")
+            global template_list
+            template_list = cfg_vars["template files"]
+            if type(template_list) != list:
+                raise Exception("Template matching method is set to PATH_MATCHES but the 'template files' key in the configuration file is not a list. Please provide a list of template files.")
+            file_is_a_template_file = file_belongs_to_template_list
+        case _:
+            raise Exception(f"Unknown template matching method: {match_method}.")
     
     # Check if the instance directory exists or create it
     if not os.path.exists(instance_dir):
@@ -295,12 +373,13 @@ def create_instance(template_dir : str, instance_dir : str, config_file : Option
                 new_file_name = file
                 if str_contains_variable( str(file) ):
                     new_file_name = str(file) % variables
-                if file.endswith(".template"):
+                is_template,new_file_name = file_is_a_template_file(file,matching_method)
+                if is_template:
                     try:
                         with open(os.path.join(root, file), "r") as f:
                             content = f.read()
                         content_updated = content % variables
-                        new_file_path = new_r_path.joinpath(new_file_name[:-len(".template")])
+                        new_file_path = new_r_path.joinpath(new_file_name)
                         with open(new_file_path, "w") as f:
                             f.write(content_updated)
                     except Exception as e:

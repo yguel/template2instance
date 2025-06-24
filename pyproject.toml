@@ -19,6 +19,10 @@ validate-email = "^1.3"
 [tool.poetry.group.scripts.dependencies]
 click = "^8.1.7"
 
+
+[tool.poetry.group.test.dependencies]
+pytest = "^8.4.1"
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
