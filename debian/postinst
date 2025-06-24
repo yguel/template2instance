@@ -332,7 +332,7 @@ def poetry_install(log_file):
         print(imsg)
         log_file.write(imsg+"\n")
     except Exception as e:
-        imsg = f"Error: 'poetry install' failed.\nThe system may not work as expected.\nCheck {log_file.name} for details."
+        imsg = f"Error: 'poetry install' failed.\nThe system may not work as expected.\nCheck {log_file.name} for details.\nVerfiy that you do not have an old version not uninstalled properly, try to run 'sudo dpkg --purge template2instance' to remove it."
         # print(imsg)
         log_file.write(imsg+"\n")
         raise e
@@ -365,7 +365,7 @@ def poetry_build(log_file):
         print(imsg)
         log_file.write(imsg+"\n")
     except Exception as e:
-        imsg = f"Error: 'poetry build' failed.\nThe system may not work as expected.\nCheck {log_file.name} for details."
+        imsg = f"Error: 'poetry build' failed.\nThe system may not work as expected.\nCheck {log_file.name} for details.\nVerfiy that you do not have an old version not uninstalled properly, try to run 'sudo dpkg --purge template2instance' to remove it."
         # print(imsg)
         log_file.write(imsg+"\n")
         raise e
@@ -396,7 +396,7 @@ def poetry_pip(log_file):
         print(imsg)
         log_file.write(imsg+"\n")
     except Exception as e:
-        imsg = f"Error: 'pip install' failed.\nThe system may not work as expected.\nCheck {log_file.name} for details."
+        imsg = f"Error: 'pip install' failed.\nThe system may not work as expected.\nCheck {log_file.name} for details.\nVerfiy that you do not have an old version not uninstalled properly, try to run 'sudo dpkg --purge template2instance' to remove it."
         # print(imsg)
         log_file.write(imsg+"\n")
         raise e
@@ -455,7 +455,7 @@ def main():
                         imsg = imsg + " ".join(
                             traceback.TracebackException.from_exception(e).format())
                         lf.write(imsg+"\n")
-                        imsg = f"The system may not work as expected.\nCheck {log_file} for details."
+                        imsg = f"The system may not work as expected.\nCheck {log_file} for details.\nVerfiy that you do not have an old version not uninstalled properly, try to run 'sudo dpkg --purge template2instance' to remove it."
                         print(imsg, flush=True)
                         lf.write(imsg+"\n")
                         sys.exit(1)
@@ -464,7 +464,7 @@ def main():
     except Exception as e:
         if not lf.closed:
             lf.close()
-        imsg = f"Error: An unexpected error occurred.\nCheck {log_file} for details."
+        imsg = f"Error: An unexpected error occurred.\nCheck {log_file} for details.\nVerfiy that you do not have an old version not uninstalled properly, try to run 'sudo dpkg --purge template2instance' to remove it."
         print(imsg, flush=True)
         with open(log_file, 'a') as lf:
             imsg = imsg + " ".join(
