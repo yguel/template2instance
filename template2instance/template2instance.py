@@ -11,6 +11,10 @@ from .open_source_license_management import get_license_short_text, check_known_
 from validate_email import validate_email
 from enum import Enum, unique, auto
 
+def current_year(_: dict) -> str:
+    from datetime import datetime
+    return int(datetime.now().year)
+
 # Create a regex pattern to match a variable in a string i.e. %(variable_name)s
 var_pattern = re.compile(r'%\([a-zA-Z_][a-zA-Z0-9_]*\)s')
 @typechecked
@@ -204,12 +208,12 @@ def check_filename(name : str):
     assert( name != "" )
 
 @typechecked
-def any_file_is_a_template( filename : str, folder_path : str ) -> tuple[bool,str]:
+def any_file_is_a_template( filename : str, folder_path) -> tuple[bool,str]:
     check_filename(filename)
     return (True,filename)
 
 @typechecked
-def file_ends_with_template_suffix( filename : str, folder_path : str ) -> tuple[bool,str]:
+def file_ends_with_template_suffix( filename : str, folder_path) -> tuple[bool,str]:
     check_filename(filename)
     L = len(".template")
     to_parse = filename.endswith(".template") and len(filename) > L
@@ -220,7 +224,7 @@ def file_ends_with_template_suffix( filename : str, folder_path : str ) -> tuple
     return (to_parse,new_file_name)
 
 @typechecked
-def file_has_template_before_suffix_or_ends_with_template_suffix(filename :str, folder_path : str) -> tuple[bool,str]:
+def file_has_template_before_suffix_or_ends_with_template_suffix(filename :str, folder_path) -> tuple[bool,str]:
     # To handle files without a suffix we check for filenames ending with 'template' suffix
     re,name = file_ends_with_template_suffix(filename,folder_path)
     if re:
@@ -237,7 +241,7 @@ def file_has_template_before_suffix_or_ends_with_template_suffix(filename :str, 
         return (False,filename)
 
 @typechecked
-def file_belongs_to_template_list(filename : str, folder_path : str) -> tuple[bool,str]:
+def file_belongs_to_template_list(filename : str, folder_path) -> tuple[bool,str]:
     check_filename(filename)
     global template_list
     if str(folder_path.joinpath(filename)) in template_list:
@@ -314,7 +318,7 @@ def create_instance(template_dir : str, instance_dir : str, config_file : Option
     # Define the method to find template files
     global file_is_a_template_file
     try:
-        match_method = TEMPLATE_MATCHING_METHOD[cfg_vars["find template file method"]]
+        match_method = TEMPLATE_MATCHING_METHOD[var_json["find template file method"]]
     except Exception as e:
         print(f"Error while loading the template matching method: {e}. Using default method: ENDS_WITH_TEMPLATE_SUFFIX.")
         match_method = TEMPLATE_MATCHING_METHOD.TEMPLATE_BEFORE_SUFFIX_OR_ENDS_WITH_TEMPLATE_SUFFIX
@@ -373,7 +377,7 @@ def create_instance(template_dir : str, instance_dir : str, config_file : Option
                 new_file_name = file
                 if str_contains_variable( str(file) ):
                     new_file_name = str(file) % variables
-                is_template,new_file_name = file_is_a_template_file(file,matching_method)
+                is_template,new_file_name = file_is_a_template_file(file,rel_path)
                 if is_template:
                     try:
                         with open(os.path.join(root, file), "r") as f:
