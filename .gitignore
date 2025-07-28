@@ -8,3 +8,4 @@ debian/.debhelper
 debian/debhelper-build-stamp
 debian/template2instance.substvars
 debian/template2instance
+field_tests/

@@ -281,8 +281,12 @@ def create_instance(template_dir : str, instance_dir : str, config_file : Option
             raise Exception(f"Error while loading {var_json_path} as a json dict :  {e}.")
     try:
         cfg_vars = var_json["variables"]
+        if "excluded files and directories" in var_json.keys():
+            excluded_paths = var_json["excluded files and directories"]
+            print(f"Excluded paths: {excluded_paths}")
     except:
         raise Exception(f"Variables not found in {var_json_path}.")
+    
     ## Load the functions in the template2instance/template2instance_plugin.py file
     plugin_file = os.path.join(template_dir, "template2instance/template2instance_plugin.py")
     if os.path.exists(plugin_file):
@@ -344,25 +348,30 @@ def create_instance(template_dir : str, instance_dir : str, config_file : Option
     # Check if the instance directory exists or create it
     if not os.path.exists(instance_dir):
         os.makedirs(instance_dir)
-    
-    # Copy recursively all files and directories from the template 
-    # directory to the instance directory except the template2instance folder.
+
+    # Copy recursively all files and directories from the template
+    # directory to the instance directory except the folders and files
+    # listed in excluded_paths.
     # For each file: either the file name finishes by .template and the file should
     # be copied without the .template extension and the variables should be replaced
     # by calculated variables, or the file should be copied as is.
-    p_template_dir = Path(template_dir)
-    p_instance_dir = Path(instance_dir)
+    p_template_dir = Path(os.path.abspath(template_dir))
+    p_instance_dir = Path(os.path.abspath(instance_dir))
     for root, dirs, files in os.walk(template_dir, topdown=True):
-        r_d = Path(root)
+        r_d = Path(os.path.abspath(root))
         # Get the name of the last directory
-        parent_dir = r_d.parts[-1]
-        if "template2instance" != parent_dir:
-            rel_path = r_d.relative_to(p_template_dir)
+        rel_path = r_d.relative_to(p_template_dir)
+        # Check if the relative path is in the excluded paths
+        if str(rel_path) not in excluded_paths:
             new_r_path = p_instance_dir.joinpath(rel_path)
             if str_contains_variable( str(new_r_path) ):
                 new_r_path = Path(str(new_r_path) % variables)
             for d in dirs:
-                if "template2instance" != d:
+                pd = Path(os.path.abspath(os.path.join(root, d)))
+                # Create relative path to p_template_dir
+                rel_d_path = pd.relative_to(p_template_dir)
+                # Check if the directory is in the excluded paths
+                if str(rel_d_path) not in excluded_paths:
                     # Create the directory
                     ## get the new directory name
                     if str_contains_variable(str(d)):
@@ -374,24 +383,43 @@ def create_instance(template_dir : str, instance_dir : str, config_file : Option
                     new_path = new_r_path.joinpath(p_d)
                     os.makedirs(new_path,exist_ok=True)
             for file in files:
-                new_file_name = file
-                if str_contains_variable( str(file) ):
-                    new_file_name = str(file) % variables
-                is_template,new_file_name = file_is_a_template_file(file,rel_path)
-                if is_template:
-                    try:
-                        with open(os.path.join(root, file), "r") as f:
-                            content = f.read()
-                        content_updated = content % variables
-                        new_file_path = new_r_path.joinpath(new_file_name)
-                        with open(new_file_path, "w") as f:
-                            f.write(content_updated)
-                    except Exception as e:
-                        print(f"Error while processing file {file} : {e}")
-                        print(f"Check that in your template file you escaped all % characters by doubling them (%%).")
-                else:
-                    # copy the file as is
-                    shutil.copy(os.path.join(root, new_file_name), new_r_path)
+                pf = Path(os.path.abspath(os.path.join(root, file)))
+                # Create relative path to p_template_dir
+                rel_file_path = pf.relative_to(p_template_dir)
+                # Check if the file is in the excluded paths
+                if str(rel_file_path) not in excluded_paths:
+                    new_file_name = file
+                    if str_contains_variable( str(file) ):
+                        new_file_name = str(file) % variables
+                    is_template,new_file_name = file_is_a_template_file(file,rel_path)
+                    if is_template:
+                        try:
+                            with open(os.path.join(root, file), "r") as f:
+                                content = f.read()
+                            content_updated = content % variables
+                            new_file_path = new_r_path.joinpath(new_file_name)
+                            with open(new_file_path, "w") as f:
+                                f.write(content_updated)
+                        except Exception as e:
+                            print(f"Error while processing file {file} : {e}")
+                            print(f"Check that in your template file you escaped all % characters by doubling them (%%).")
+                    else:
+                        # copy the file as is
+                        shutil.copy(os.path.join(root, new_file_name), new_r_path)
+        else:
+            # Record all the child directories and files in the excluded_paths
+            for d in dirs:
+                pd = Path(os.path.abspath(os.path.join(root, d)))
+                # Create relative path to p_template_dir
+                rel_d_path = pd.relative_to(p_template_dir)
+                if rel_d_path not in excluded_paths:
+                    excluded_paths.append(str(rel_d_path))
+            for file in files:
+                pf = Path(os.path.abspath(os.path.join(root, file)))
+                # Create relative path to p_template_dir
+                rel_file_path = pf.relative_to(p_template_dir)
+                if rel_file_path not in excluded_paths:
+                    excluded_paths.append(str(rel_file_path))
     
     # Output the configuration file if requested
     if output_config:
