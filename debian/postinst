@@ -21,6 +21,10 @@ initial_template_list = [
     {
         "path" : "templates/ros2/rqt",
         "repository" : "https://github.com/yguel/template.ros2.rqt.git"
+    },
+    {
+        "path" : "templates/sphinx.template",
+        "repository" : "https://github.com/yguel/template.sphinx.git"
     }
 ]
 
