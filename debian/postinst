@@ -507,7 +507,7 @@ def main():
                     stderr=subprocess.STDOUT,
                     text=True
                 )
-                imsg = f"Template: {template_name} installed successfully in {project_dir}/{t['path']}."
+                imsg = f"\tTemplate: {template_name} installed successfully in {project_dir}/{t['path']}."
                 print(imsg, flush=True)
                 lf.write(imsg+"\n")
                 record_directory(f"{project_dir}/{t['path']}")

@@ -283,7 +283,6 @@ def create_instance(template_dir : str, instance_dir : str, config_file : Option
         cfg_vars = var_json["variables"]
         if "excluded files and directories" in var_json.keys():
             excluded_paths = var_json["excluded files and directories"]
-            print(f"Excluded paths: {excluded_paths}")
     except:
         raise Exception(f"Variables not found in {var_json_path}.")
     
