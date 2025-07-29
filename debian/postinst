@@ -478,17 +478,19 @@ def main():
     # Install templates
     log_file = os.path.join(log_dir, 'templates-install.log')
     with open(log_file, 'w') as lf:
+        imsg = f"Installing templates in {project_dir}..."
+        print(imsg, flush=True)
+        lf.write(imsg+"\n")
         for t in initial_template_list:
             template_name = None
             try:
-                imsg = f"Installing template: {t['path']} from repository: {t['repository']}"
+                template_name = t['path'].split('/')[-1]
+                imsg = f"Installing template: {template_name} from repository: {t['repository']} in {project_dir}/{t['path']}..."
                 print(imsg, flush=True)
                 lf.write(imsg+"\n")
-                template_name = t['path'].split('/')[-1]
                 # create directory
                 template_dir = t['path'][:-len(template_name)]
                 cmd = "mkdir -p " + template_dir
-                print(cmd)
                 result = subprocess.run(
                     cmd.split(),
                     check=True,
@@ -505,7 +507,7 @@ def main():
                     stderr=subprocess.STDOUT,
                     text=True
                 )
-                imsg = f"Template: {template_name} installed successfully."
+                imsg = f"Template: {template_name} installed successfully in {project_dir}/{t['path']}."
                 print(imsg, flush=True)
                 lf.write(imsg+"\n")
                 record_directory(f"{project_dir}/{t['path']}")
